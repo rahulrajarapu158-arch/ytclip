@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ytclip"
+version = "0.1.0"
+description = "YouTube video downloader, trimmer, and transcript extractor"
+readme = "README.md"
+license = {text = "AGPL-3.0"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Rahul Rajarapu", email = "rahulrajarapu158@gmail.com"}
+]
+keywords = ["youtube", "downloader", "trimmer", "transcript", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Utilities",
+]
+
+dependencies = [
+    "yt-dlp>=2025.1.1",
+]
+
+[project.scripts]
+ytclip = "ytclip.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/rahulrajarapu158-arch/ytclip"
+Repository = "https://github.com/rahulrajarapu158-arch/ytclip"
+Issues = "https://github.com/rahulrajarapu158-arch/ytclip/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ytclip = ["*.json", "*.txt"]
