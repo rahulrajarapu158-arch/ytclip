@@ -1,0 +1,3 @@
+# ytclip - YouTube clip downloader
+
+yt-dlp>=2025.1.1
