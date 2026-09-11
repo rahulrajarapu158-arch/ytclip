@@ -18,8 +18,8 @@ def index():
 
 
 @app.route('/api/info', methods=['POST'])
-def video_info():
-    """Get video info without downloading"""
+def api_info():
+    """Get video metadata"""
     data = request.json
     url = data.get('url')
     if not url:
@@ -32,6 +32,7 @@ def video_info():
     return jsonify({
         'video_id': video_id,
         'embed_url': f'https://www.youtube.com/embed/{video_id}',
+        'watch_url': f'https://www.youtube.com/watch?v={video_id}',
         'thumbnail': f'https://img.youtube.com/vi/{video_id}/maxresdefault.jpg'
     })
 
@@ -54,11 +55,11 @@ def api_download():
     output = os.path.join(OUTPUT_DIR, f"{video_id}_{quality}.mp4")
     
     if os.path.exists(output):
-        return jsonify({'video_id': video_id, 'status': 'cached', 'file': output})
+        return jsonify({'video_id': video_id, 'status': 'cached', 'file': os.path.basename(output)})
     
     success = download_video(url, output, quality=quality, api_key=api_key)
     if success:
-        return jsonify({'video_id': video_id, 'status': 'downloaded', 'file': output})
+        return jsonify({'video_id': video_id, 'status': 'downloaded', 'file': os.path.basename(output)})
     return jsonify({'error': 'Download failed'}), 500
 
 
@@ -83,7 +84,7 @@ def api_trim():
     output = os.path.join(OUTPUT_DIR, f"{base_name}.mp4")
     
     if os.path.exists(output):
-        return jsonify({'status': 'cached', 'file': output, 'video_id': video_id})
+        return jsonify({'status': 'cached', 'file': os.path.basename(output), 'video_id': video_id})
     
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_video = os.path.join(tmpdir, "video.mp4")
@@ -92,9 +93,15 @@ def api_trim():
         
         success = trim_video(temp_video, output, start, end)
         if success:
-            return jsonify({'status': 'trimmed', 'file': output, 'video_id': video_id})
+            return jsonify({'status': 'trimmed', 'file': os.path.basename(output), 'video_id': video_id})
     
     return jsonify({'error': 'Trim failed'}), 500
+
+
+@app.route('/api/cut', methods=['POST'])
+def api_cut():
+    """Cut video (alias for trim)"""
+    return api_trim()
 
 
 @app.route('/api/transcript', methods=['POST'])
@@ -156,23 +163,21 @@ def api_process():
     
     return jsonify({
         'status': 'done',
-        'file': output,
-        'transcript_file': transcript_file if transcript else None,
+        'file': os.path.basename(output),
+        'transcript_file': os.path.basename(transcript_file) if transcript_file else None,
         'video_id': video_id,
         'transcript': transcript
     })
 
 
-@app.route('/api/video/<path:filename>')
-def serve_video(filename):
-    """Serve video file"""
-    return send_file(filename, mimetype='video/mp4')
-
-
 @app.route('/api/file/<path:filename>')
 def serve_file(filename):
     """Serve any file"""
-    return send_file(filename)
+    if not os.path.isabs(filename):
+        filepath = os.path.join(OUTPUT_DIR, filename)
+    else:
+        filepath = filename
+    return send_file(filepath)
 
 
 if __name__ == '__main__':
