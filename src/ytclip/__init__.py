@@ -71,8 +71,8 @@ def parse_timestamp(ts):
     else:
         raise ValueError(f"Invalid timestamp format: {ts}")
 
-def download_video(url, output_path, quality="480", api_key=None):
-    """Download video using yt-dlp"""
+def download_video(url, output_path, quality="480", api_key=None, fmt="mp4", start=None, end=None):
+    """Download video using yt-dlp, with optional section download via ffmpeg"""
     print(f"{Colors.BLUE}📥 Downloading video...{Colors.END}")
     
     quality_map = {
@@ -83,13 +83,33 @@ def download_video(url, output_path, quality="480", api_key=None):
         "best": "bestvideo+bestaudio/best",
     }
     
-    ydl_opts = {
-        'format': quality_map.get(quality, quality_map["480"]),
-        'outtmpl': output_path,
-        'merge_output_format': 'mp4',
-        'quiet': True,
-        'no_warnings': True,
-    }
+    # For MP3, extract audio
+    if fmt == 'mp3':
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': output_path,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': True,
+            'no_warnings': True,
+        }
+        if start and end:
+            start_secs = parse_timestamp(start)
+            end_secs = parse_timestamp(end)
+            ydl_opts['postprocessors'][0]['preferredquality'] = '192'
+            # For MP3 with section, we need to download full then extract section
+            # yt-dlp doesn't support section download for audio extraction well
+    else:
+        ydl_opts = {
+            'format': quality_map.get(quality, quality_map["480"]),
+            'outtmpl': output_path,
+            'merge_output_format': fmt,
+            'quiet': True,
+            'no_warnings': True,
+        }
     
     # Pro tier check for high quality
     if quality in ["1080", "2160", "best"] and not api_key:
@@ -97,6 +117,51 @@ def download_video(url, output_path, quality="480", api_key=None):
         print(f"{Colors.YELLOW}   Get key at: https://ytclip.dev/pricing{Colors.END}")
         print(f"{Colors.YELLOW}   Falling back to 480p (free tier){Colors.END}")
         ydl_opts['format'] = quality_map["480"]
+    
+    # YouTube DASH doesn't support --download-sections reliably, so for
+    # section downloads we still pull the full stream then extract with ffmpeg.
+    # For non-YouTube sites with direct video URLs, use _download_section_ffmpeg
+    # which can do HTTP range requests for true partial downloads.
+    if start and end and fmt != 'mp3':
+        start_secs = parse_timestamp(start)
+        end_secs = parse_timestamp(end)
+        duration = end_secs - start_secs
+        if duration <= 0:
+            print(f"{Colors.RED}❌ Invalid section: {start} to {end}{Colors.END}")
+            return False
+        print(f"{Colors.CYAN}   Downloading section {start} to {end} ({duration:.1f}s)...{Colors.END}")
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_full = os.path.join(tmpdir, "full.%(ext)s")
+            full_opts = dict(ydl_opts)
+            full_opts['outtmpl'] = temp_full
+            with yt_dlp.YoutubeDL(full_opts) as ydl:
+                ydl.download([url])
+            
+            downloaded = None
+            for f in os.listdir(tmpdir):
+                if f.startswith("full."):
+                    downloaded = os.path.join(tmpdir, f)
+                    break
+            
+            if not downloaded:
+                print(f"{Colors.RED}❌ Download failed{Colors.END}")
+                return False
+            
+            cmd = [
+                'ffmpeg', '-y', '-ss', str(start_secs),
+                '-i', downloaded, '-t', str(duration),
+                '-c:v', 'copy', '-c:a', 'copy',
+                '-avoid_negative_ts', 'make_zero',
+                output_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"{Colors.GREEN}✅ Downloaded section: {duration:.1f}s{Colors.END}")
+                return True
+            else:
+                print(f"{Colors.RED}❌ Section extraction failed{Colors.END}")
+                return False
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -107,6 +172,92 @@ def download_video(url, output_path, quality="480", api_key=None):
             return True
     except Exception as e:
         print(f"{Colors.RED}❌ Download failed: {e}{Colors.END}")
+        return False
+
+
+def _download_section_ffmpeg(url, output_path, quality, start, end, fmt="mp4"):
+    """Download only a specific section using ffmpeg with direct URLs"""
+    import subprocess
+    
+    start_secs = parse_timestamp(start)
+    end_secs = parse_timestamp(end)
+    duration = end_secs - start_secs
+    
+    if duration <= 0:
+        print(f"{Colors.RED}❌ Invalid section: {start} to {end}{Colors.END}")
+        return False
+    
+    print(f"{Colors.CYAN}   Downloading section {start} to {end} ({duration:.1f}s)...{Colors.END}")
+    
+    quality_map = {
+        "480": "bestvideo[height<=480]+bestaudio/best[height<=480]",
+        "720": "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        "1080": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+        "2160": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+        "best": "bestvideo+bestaudio/best",
+    }
+    
+    try:
+        # Get direct download URLs
+        ydl_opts = {
+            'format': quality_map.get(quality, quality_map["480"]),
+            'quiet': True,
+            'no_warnings': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            formats = info.get('formats', [])
+            
+            # Find video and audio URLs
+            video_url = None
+            audio_url = None
+            for f in formats:
+                if f.get('vcodec') != 'none' and f.get('acodec') == 'none':
+                    if quality in ["480", "720", "1080", "2160"]:
+                        if f.get('height', 0) <= int(quality):
+                            video_url = f.get('url')
+                    else:
+                        video_url = f.get('url')
+                elif f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                    audio_url = f.get('url')
+            
+            if not video_url:
+                video_url = info.get('url')
+            if not audio_url:
+                audio_url = video_url
+        
+        # Use ffmpeg to download only the section
+        # -ss BEFORE -i uses HTTP Range request to skip directly to position
+        cmd = [
+            'ffmpeg', '-y',
+            '-ss', str(start_secs),
+            '-i', video_url,
+        ]
+        if audio_url and audio_url != video_url:
+            cmd.extend(['-ss', str(start_secs), '-i', audio_url])
+        
+        cmd.extend([
+            '-t', str(duration),
+            '-c:v', 'copy',
+            '-c:a', 'copy',
+            '-avoid_negative_ts', 'make_zero',
+            '-movflags', '+faststart',
+            output_path
+        ])
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=max(30, int(duration * 3)))
+        if result.returncode == 0:
+            print(f"{Colors.GREEN}✅ Downloaded section: {duration:.1f}s{Colors.END}")
+            return True
+        else:
+            print(f"{Colors.YELLOW}⚠️  Section download failed, falling back to full download{Colors.END}")
+            return download_video(url, output_path, quality=quality, fmt=fmt)
+            
+    except subprocess.TimeoutExpired:
+        print(f"{Colors.RED}❌ Download timed out{Colors.END}")
+        return False
+    except Exception as e:
+        print(f"{Colors.RED}❌ Section download error: {e}{Colors.END}")
         return False
 
 def trim_video(input_path, output_path, start_time, end_time):
@@ -212,7 +363,7 @@ def cmd_download(args):
     
     output = args.output or f"%(title)s_%(id)s.%(ext)s"
     
-    download_video(url, output, quality=args.quality, api_key=args.api_key)
+    download_video(url, output, quality=args.quality, api_key=args.api_key, fmt=args.format, start=getattr(args, 'start', None), end=getattr(args, 'end', None))
 
 def cmd_cut(args):
     """Handle cut command"""
@@ -221,19 +372,19 @@ def cmd_cut(args):
         print(f"{Colors.RED}❌ Invalid YouTube URL{Colors.END}")
         return
     
+    fmt = getattr(args, 'format', 'mp4')
+    
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Download first
+        # Download only the section
         temp_video = os.path.join(tmpdir, "video.mp4")
-        if not download_video(url, temp_video, quality=args.quality, api_key=args.api_key):
+        if not download_video(url, temp_video, quality=args.quality, api_key=args.api_key, fmt=fmt, start=args.start, end=args.end):
             return
         
-        # Then trim
-        output = args.output or f"clip_%(id)s.%(ext)s"
-        # Replace placeholders
-        video_id = get_video_id(url)
-        output = output.replace("%(id)s", video_id or "clip")
-        
-        trim_video(temp_video, output, args.start, args.end)
+        # No trim needed - already downloaded only the section
+        output = args.output or f"clip_{get_video_id(url) or 'clip'}.{fmt}"
+        import shutil
+        shutil.copy2(temp_video, output)
+        print(f"{Colors.GREEN}✅ Clip: {output}{Colors.END}")
 
 def cmd_transcript(args):
     """Handle transcript command"""
@@ -253,7 +404,7 @@ def cmd_transcript(args):
             print(transcript[:500] + "..." if len(transcript) > 500 else transcript)
 
 def cmd_process(args):
-    """Handle full process: download + trim + transcript"""
+    """Handle full process: download + transcript"""
     url = args.url
     if not validate_url(url):
         print(f"{Colors.RED}❌ Invalid YouTube URL{Colors.END}")
@@ -261,21 +412,16 @@ def cmd_process(args):
     
     video_id = get_video_id(url)
     base_name = f"ytclip_{video_id}"
+    fmt = getattr(args, 'format', 'mp4')
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Download
+        # Download only the section (or full video if no timestamps)
         temp_video = os.path.join(tmpdir, "video.mp4")
-        if not download_video(url, temp_video, quality=args.quality, api_key=args.api_key):
+        if not download_video(url, temp_video, quality=args.quality, api_key=args.api_key, fmt=fmt, start=args.start, end=args.end):
             return
         
-        # Trim if timestamps provided
-        if args.start and args.end:
-            trimmed = os.path.join(tmpdir, "trimmed.mp4")
-            if trim_video(temp_video, trimmed, args.start, args.end):
-                temp_video = trimmed
-        
-        # Copy final video
-        final_video = args.output or f"{base_name}.mp4"
+        # No trim needed - download_video already handles sections
+        final_video = args.output or f"{base_name}.{fmt}"
         import shutil
         shutil.copy2(temp_video, final_video)
         print(f"{Colors.GREEN}✅ Video: {final_video}{Colors.END}")
@@ -313,7 +459,7 @@ def cmd_batch(args):
         if not hasattr(args, 'transcript'):
             args.transcript = False
         if not hasattr(args, 'format'):
-            args.format = 'text'
+            args.format = 'mp4'
         if not hasattr(args, 'lang'):
             args.lang = 'en'
         cmd_process(args)
@@ -365,6 +511,9 @@ Examples:
     dl_parser.add_argument('url', help='YouTube URL')
     dl_parser.add_argument('-o', '--output', help='Output filename (supports %%(title)s, %%(id)s)')
     dl_parser.add_argument('-q', '--quality', default='480', choices=['480', '720', '1080', '2160', 'best'])
+    dl_parser.add_argument('-f', '--format', default='mp4', choices=['mp4', 'webm', 'mkv', 'mp3'], help='Output format')
+    dl_parser.add_argument('--start', help='Start timestamp for partial download')
+    dl_parser.add_argument('--end', help='End timestamp for partial download')
     
     # Cut
     cut_parser = subparsers.add_parser('cut', help='Download and trim video')
@@ -373,6 +522,8 @@ Examples:
     cut_parser.add_argument('--end', required=True, help='End timestamp (e.g., 4:20)')
     cut_parser.add_argument('-o', '--output', help='Output filename')
     cut_parser.add_argument('-q', '--quality', default='480', choices=['480', '720', '1080', '2160', 'best'])
+    cut_parser.add_argument('-f', '--format', default='mp4', choices=['mp4', 'webm', 'mkv', 'mp3'], help='Output format')
+    cut_parser.set_defaults(func=cmd_cut)
     
     # Transcript
     trans_parser = subparsers.add_parser('transcript', help='Extract transcript')
@@ -389,7 +540,7 @@ Examples:
     proc_parser.add_argument('-o', '--output', help='Output filename')
     proc_parser.add_argument('-q', '--quality', default='480', choices=['480', '720', '1080', '2160', 'best'])
     proc_parser.add_argument('--transcript', action='store_true', help='Include transcript')
-    proc_parser.add_argument('-f', '--format', default='text', choices=['text', 'srt', 'vtt'])
+    proc_parser.add_argument('-f', '--format', default='mp4', choices=['mp4', 'webm', 'mkv', 'mp3'], help='Output format')
     proc_parser.add_argument('-l', '--lang', default='en')
     
     # Batch
@@ -398,6 +549,7 @@ Examples:
     batch_parser.add_argument('--start', help='Default start timestamp')
     batch_parser.add_argument('--end', help='Default end timestamp')
     batch_parser.add_argument('-q', '--quality', default='480', choices=['480', '720', '1080', '2160', 'best'])
+    batch_parser.add_argument('-f', '--format', default='mp4', choices=['mp4', 'webm', 'mkv', 'mp3'], help='Output format')
     batch_parser.add_argument('--transmit', action='store_true')
     
     # Config

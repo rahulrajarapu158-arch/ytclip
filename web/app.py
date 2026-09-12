@@ -1,14 +1,17 @@
 """ytclip web app - Flask backend"""
 import os
 import tempfile
-import json
 from flask import Flask, request, jsonify, send_file, render_template
-from ytclip import download_video, trim_video, get_transcript, get_video_id
+from ytclip import download_video, trim_video, get_transcript, get_video_id, parse_timestamp
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max
 
-OUTPUT_DIR = os.path.join(tempfile.gettempdir(), 'ytclip_web')
+# Use /data for persistent storage on HF Spaces, else temp
+if os.path.exists('/data'):
+    OUTPUT_DIR = '/data/ytclip_web'
+else:
+    OUTPUT_DIR = os.path.join(tempfile.gettempdir(), 'ytclip_web')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
@@ -59,6 +62,7 @@ def api_download():
     data = request.json
     url = data.get('url')
     quality = data.get('quality', '480')
+    fmt = data.get('format', 'mp4')
     api_key = data.get('api_key')
     
     if not url:
@@ -68,25 +72,26 @@ def api_download():
     if not video_id:
         return jsonify({'error': 'Invalid YouTube URL'}), 400
     
-    output = os.path.join(OUTPUT_DIR, f"{video_id}_{quality}.mp4")
+    output = os.path.join(OUTPUT_DIR, f"{video_id}_{quality}.{fmt}")
     
     if os.path.exists(output):
-        return jsonify({'video_id': video_id, 'status': 'cached', 'file': os.path.basename(output)})
+        return jsonify({'video_id': video_id, 'status': 'cached', 'file': os.path.basename(output), 'format': fmt})
     
-    success = download_video(url, output, quality=quality, api_key=api_key)
+    success = download_video(url, output, quality=quality, api_key=api_key, fmt=fmt)
     if success:
-        return jsonify({'video_id': video_id, 'status': 'downloaded', 'file': os.path.basename(output)})
+        return jsonify({'video_id': video_id, 'status': 'downloaded', 'file': os.path.basename(output), 'format': fmt})
     return jsonify({'error': 'Download failed'}), 500
 
 
 @app.route('/api/trim', methods=['POST'])
 def api_trim():
-    """Trim video"""
+    """Trim video by downloading only the section"""
     data = request.json
     url = data.get('url')
     start = data.get('start')
     end = data.get('end')
     quality = data.get('quality', '480')
+    fmt = data.get('format', 'mp4')
     api_key = data.get('api_key')
     
     if not all([url, start, end]):
@@ -97,21 +102,21 @@ def api_trim():
         return jsonify({'error': 'Invalid YouTube URL'}), 400
     
     base_name = f"{video_id}_{quality}_{start.replace(':', '-')}_{end.replace(':', '-')}"
-    output = os.path.join(OUTPUT_DIR, f"{base_name}.mp4")
+    output = os.path.join(OUTPUT_DIR, f"{base_name}.{fmt}")
     
     if os.path.exists(output):
-        return jsonify({'status': 'cached', 'file': os.path.basename(output), 'video_id': video_id})
+        return jsonify({'status': 'cached', 'file': os.path.basename(output), 'video_id': video_id, 'format': fmt})
     
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_video = os.path.join(tmpdir, "video.mp4")
-        if not download_video(url, temp_video, quality=quality, api_key=api_key):
+        # Download only the section
+        if not download_video(url, temp_video, quality=quality, api_key=api_key, fmt=fmt, start=start, end=end):
             return jsonify({'error': 'Download failed'}), 500
         
-        success = trim_video(temp_video, output, start, end)
-        if success:
-            return jsonify({'status': 'trimmed', 'file': os.path.basename(output), 'video_id': video_id})
+        import shutil
+        shutil.copy2(temp_video, output)
     
-    return jsonify({'error': 'Trim failed'}), 500
+    return jsonify({'status': 'trimmed', 'file': os.path.basename(output), 'video_id': video_id, 'format': fmt})
 
 
 @app.route('/api/cut', methods=['POST'])
@@ -140,55 +145,148 @@ def api_transcript():
 @app.route('/api/process', methods=['POST'])
 def api_process():
     """Full process: download + trim + transcript"""
-    data = request.json
-    url = data.get('url')
-    start = data.get('start')
-    end = data.get('end')
-    quality = data.get('quality', '480')
-    fmt = data.get('format', 'text')
-    lang = data.get('lang', 'en')
-    api_key = data.get('api_key')
-    
-    if not url:
-        return jsonify({'error': 'URL required'}), 400
-    
-    video_id = get_video_id(url)
-    if not video_id:
-        return jsonify({'error': 'Invalid YouTube URL'}), 400
-    
-    base_name = f"{video_id}_{quality}_{start.replace(':', '-')}_{end.replace(':', '-')}"
-    output = os.path.join(OUTPUT_DIR, f"{base_name}.mp4")
-    transcript_file = os.path.join(OUTPUT_DIR, f"{base_name}.{fmt}")
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        temp_video = os.path.join(tmpdir, "video.mp4")
-        if not download_video(url, temp_video, quality=quality, api_key=api_key):
-            return jsonify({'error': 'Download failed'}), 500
+    try:
+        data = request.json
+        url = data.get('url')
+        start = data.get('start')
+        end = data.get('end')
+        quality = data.get('quality', '480')
+        fmt = data.get('format', 'mp4')
+        transcript_fmt = data.get('transcript_format', 'text')
+        lang = data.get('lang', 'en')
+        api_key = data.get('api_key')
         
-        if start and end:
-            if not trim_video(temp_video, output, start, end):
-                return jsonify({'error': 'Trim failed'}), 500
-        else:
+        if not url:
+            return jsonify({'error': 'URL required'}), 400
+        
+        video_id = get_video_id(url)
+        if not video_id:
+            return jsonify({'error': 'Invalid YouTube URL'}), 400
+        
+        # Get video duration and clamp timestamps
+        duration = get_video_duration(url)
+        start_secs = parse_timestamp(start) if start else 0
+        end_secs = parse_timestamp(end) if end else duration
+        
+        # Clamp to video duration
+        if start_secs >= duration:
+            mins = int(duration) // 60
+            secs = int(duration) % 60
+            return jsonify({'error': f'Start time {start} exceeds video duration {mins}:{secs:02d}'}), 400
+        if end_secs > duration:
+            end_secs = duration
+            end = f"{int(duration)//60}:{int(duration)%60:02d}"
+        if start_secs >= end_secs:
+            return jsonify({'error': f'Start time {start} must be before end time {end}'}), 400
+        
+        base_name = f"{video_id}_{quality}_{start.replace(':', '-')}_{end.replace(':', '-')}"
+        output = os.path.join(OUTPUT_DIR, f"{base_name}.{fmt}")
+        transcript_file = os.path.join(OUTPUT_DIR, f"{base_name}.{transcript_fmt}")
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_video = os.path.join(tmpdir, "video.mp4")
+            # Download only the section we need
+            if not download_video(url, temp_video, quality=quality, api_key=api_key, fmt=fmt, start=start, end=end):
+                return jsonify({'error': 'Download failed'}), 500
+            
+            # No trim needed - already downloaded only the section
             import shutil
             shutil.copy2(temp_video, output)
-    
-    transcript = get_transcript(url, fmt, lang)
-    if transcript:
-        with open(transcript_file, 'w') as f:
-            f.write(transcript)
-    
-    # Get file size
-    file_size_bytes = os.path.getsize(output)
-    file_size = f"{file_size_bytes / 1024 / 1024:.1f} MB" if file_size_bytes > 1024*1024 else f"{file_size_bytes / 1024:.0f} KB"
+        
+        transcript = get_transcript(url, transcript_fmt, lang)
+        if transcript:
+            with open(transcript_file, 'w') as f:
+                f.write(transcript)
+        
+        # Get file size
+        file_size_bytes = os.path.getsize(output)
+        file_size = f"{file_size_bytes / 1024 / 1024:.1f} MB" if file_size_bytes > 1024*1024 else f"{file_size_bytes / 1024:.0f} KB"
+        
+        return jsonify({
+            'status': 'done',
+            'file': os.path.basename(output),
+            'transcript_file': os.path.basename(transcript_file) if transcript_file else None,
+            'video_id': video_id,
+            'transcript': transcript,
+            'file_size': file_size,
+            'format': fmt
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-    return jsonify({
-        'status': 'done',
-        'file': os.path.basename(output),
-        'transcript_file': os.path.basename(transcript_file) if transcript_file else None,
-        'video_id': video_id,
-        'transcript': transcript,
-        'file_size': file_size
-    })
+
+@app.route('/api/multi-process', methods=['POST'])
+def api_multi_process():
+    """Download each clip's section separately, no full download needed"""
+    try:
+        data = request.json
+        url = data.get('url')
+        clips = data.get('clips', [])
+        quality = data.get('quality', '480')
+        fmt = data.get('format', 'mp4')
+        transcript_fmt = data.get('transcript_format', 'text')
+        lang = data.get('lang', 'en')
+        api_key = data.get('api_key')
+        
+        if not url:
+            return jsonify({'error': 'URL required'}), 400
+        if not clips:
+            return jsonify({'error': 'No clips provided'}), 400
+        
+        video_id = get_video_id(url)
+        if not video_id:
+            return jsonify({'error': 'Invalid YouTube URL'}), 400
+        
+        results = []
+        
+        for i, clip in enumerate(clips):
+            start = clip.get('start', '0:00')
+            end = clip.get('end', '0:00')
+            
+            base_name = f"{video_id}_{quality}_{start.replace(':', '-')}_{end.replace(':', '-')}"
+            output = os.path.join(OUTPUT_DIR, f"{base_name}.{fmt}")
+            
+            # Download only this clip's section
+            with tempfile.TemporaryDirectory() as tmpdir:
+                temp_video = os.path.join(tmpdir, "video.mp4")
+                if not download_video(url, temp_video, quality=quality, api_key=api_key, fmt=fmt, start=start, end=end):
+                    results.append({'index': i + 1, 'error': 'Download failed'})
+                    continue
+                
+                import shutil
+                shutil.copy2(temp_video, output)
+            
+            # Get file size
+            file_size_bytes = os.path.getsize(output)
+            file_size = f"{file_size_bytes / 1024 / 1024:.1f} MB" if file_size_bytes > 1024*1024 else f"{file_size_bytes / 1024:.0f} KB"
+            
+            results.append({
+                'index': i + 1,
+                'status': 'done',
+                'file': os.path.basename(output),
+                'file_size': file_size,
+                'format': fmt,
+                'start': start,
+                'end': end
+            })
+        
+        # Get transcript once
+        transcript = None
+        if transcript_fmt != 'none':
+            transcript = get_transcript(url, transcript_fmt, lang)
+            if transcript:
+                transcript_file = os.path.join(OUTPUT_DIR, f"{video_id}_{quality}_transcript.{transcript_fmt}")
+                with open(transcript_file, 'w') as f:
+                    f.write(transcript)
+        
+        return jsonify({
+            'status': 'done',
+            'video_id': video_id,
+            'results': results,
+            'transcript': transcript
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/file/<path:filename>')
@@ -202,4 +300,6 @@ def serve_file(filename):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)

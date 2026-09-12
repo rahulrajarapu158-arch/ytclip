@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ytclip — Free YouTube Clip Downloader</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --surface: rgba(255, 255, 255, 0.03);
+            --surface-hover: rgba(255, 255, 255, 0.06);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-focus: rgba(139, 92, 246, 0.5);
+            --text-primary: #f0f0f5;
+            --text-secondary: #8888a0;
+            --text-muted: #55556a;
+            --accent-primary: #8b5cf6;
+            --accent-secondary: #06b6d4;
+            --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --glow-purple: rgba(139, 92, 246, 0.15);
+            --glow-cyan: rgba(6, 182, 212, 0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: 
+                radial-gradient(ellipse at 20% 20%, var(--glow-purple) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, var(--glow-cyan) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 60px 24px;
+        }
+
+        .header { text-align: center; margin-bottom: 48px; }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .logo-icon {
+            width: 48px; height: 48px;
+            background: var(--accent-gradient);
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 8px 32px var(--glow-purple);
+        }
+
+        .logo-text {
+            font-size: 32px;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .tagline { font-size: 16px; color: var(--text-secondary); font-weight: 400; }
+
+        .main-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px;
+            backdrop-filter: blur(20px);
+        }
+
+        .url-section { margin-bottom: 32px; }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .url-input {
+            width: 100%;
+            padding: 20px 20px 20px 56px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            color: var(--text-primary);
+            font-size: 16px;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+
+        .url-input::placeholder { color: var(--text-muted); }
+        .url-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: var(--surface-hover);
+            box-shadow: 0 0 0 4px var(--glow-purple);
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 20px;
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 16px;
+        }
+
+        .range-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+        }
+
+        .range-slider {
+            position: relative;
+            height: 60px;
+            cursor: pointer;
+        }
+
+        .range-track {
+            position: absolute;
+            top: 50%;
+            left: 0; right: 0;
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            transform: translateY(-50%);
+        }
+
+        .range-fill {
+            position: absolute;
+            top: 50%;
+            height: 8px;
+            background: var(--accent-gradient);
+            border-radius: 4px;
+            transform: translateY(-50%);
+            box-shadow: 0 0 20px var(--glow-purple);
+        }
+
+        .range-thumb {
+            position: absolute;
+            top: 50%;
+            width: 28px; height: 28px;
+            background: var(--bg-secondary);
+            border: 3px solid;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            z-index: 3;
+        }
+
+        .range-thumb.start { border-color: var(--accent-primary); }
+        .range-thumb.end { border-color: var(--accent-secondary); }
+
+        .range-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .timestamp-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .ts-input-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+        }
+
+        .ts-input-group label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .ts-input-group input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            text-align: right;
+        }
+
+        .ts-input-group input:focus { outline: none; }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .option-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .option-card:hover {
+            background: var(--surface-hover);
+            border-color: var(--accent-primary);
+        }
+
+        .option-card.active {
+            background: var(--surface-hover);
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 16px var(--glow-purple);
+        }
+
+        .option-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+
+        .option-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .process-btn {
+            width: 100%;
+            margin-top: 32px;
+            padding: 20px;
+            background: var(--accent-gradient);
+            border: none;
+            border-radius: 16px;
+            color: white;
+            font-size: 18px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 8px 32px var(--glow-purple);
+        }
+
+        .process-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px var(--glow-purple);
+        }
+
+        .process-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 24px;
+            padding: 20px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+        }
+
+        .progress-container.active { display: block; }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        .status {
+            display: none;
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+
+        .status.active { display: flex; align-items: center; gap: 12px; }
+        .status.info { background: var(--glow-purple); border: 1px solid var(--accent-primary); color: var(--accent-primary); }
+        .status.success { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); color: var(--success); }
+        .status.error { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: var(--error); }
+
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .result {
+            display: none;
+            margin-top: 24px;
+            padding: 24px;
+            background: rgba(16, 185, 129, 0.05);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 16px;
+            text-align: center;
+        }
+
+        .result.active { display: block; }
+
+        .result-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--success);
+            margin-bottom: 12px;
+        }
+
+        .download-link {
+            display: inline-block;
+            padding: 14px 32px;
+            background: var(--accent-gradient);
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            margin-top: 8px;
+            box-shadow: 0 4px 20px var(--glow-purple);
+        }
+
+        .download-link:hover { transform: translateY(-2px); }
+
+        .api-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 24px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .api-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--accent-primary);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <div class="logo-icon">🎬</div>
+                <div class="logo-text">ytclip</div>
+            </div>
+            <p class="tagline">Download YouTube clips by timestamps, free forever</p>
+        </div>
+
+        <div class="main-card">
+            <div class="url-section">
+                <div class="input-wrapper">
+                    <span class="input-icon">🔗</span>
+                    <input type="text" class="url-input" id="urlInput" placeholder="Paste YouTube URL here...">
+                </div>
+            </div>
+
+            <div class="section-title">Select timestamps</div>
+            <div class="range-container">
+                <div class="range-slider" id="rangeSlider">
+                    <div class="range-track"></div>
+                    <div class="range-fill" id="rangeFill"></div>
+                    <div class="range-thumb start" id="thumbStart" style="left: 0%"></div>
+                    <div class="range-thumb end" id="thumbEnd" style="left: 100%"></div>
+                </div>
+                <div class="range-labels">
+                    <span id="labelStart">0:00</span>
+                    <span id="labelDuration">Duration: --:--</span>
+                    <span id="labelEnd">0:00</span>
+                </div>
+                <div class="timestamp-inputs">
+                    <div class="ts-input-group">
+                        <label>Start</label>
+                        <input type="text" id="startInput" value="0:00" placeholder="0:00">
+                    </div>
+                    <div class="ts-input-group">
+                        <label>End</label>
+                        <input type="text" id="endInput" value="0:00" placeholder="0:00">
+                    </div>
+                </div>
+            </div>
+
+            <div class="options-grid">
+                <div class="option-card active" data-quality="480" onclick="selectQuality(this)">
+                    <div class="option-label">Quality</div>
+                    <div class="option-value">480p <span style="color:var(--success);font-size:11px;">FREE</span></div>
+                </div>
+                <div class="option-card" data-quality="720" onclick="selectQuality(this)">
+                    <div class="option-label">Quality</div>
+                    <div class="option-value">720p</div>
+                </div>
+                <div class="option-card" data-quality="1080" onclick="selectQuality(this)">
+                    <div class="option-label">Quality</div>
+                    <div class="option-value">1080p</div>
+                </div>
+            </div>
+
+            <button class="process-btn" id="processBtn" onclick="processVideo()">
+                Download Clip
+            </button>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="section-title">Processing...</div>
+                <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+                <div class="progress-text" id="progressText">Preparing download...</div>
+            </div>
+
+            <div class="status info" id="statusInfo"><div class="spinner"></div><span id="statusText"></span></div>
+            <div class="status success" id="statusSuccess"><span>✅</span><span id="successText"></span></div>
+            <div class="status error" id="statusError"><span>❌</span><span id="errorText"></span></div>
+
+            <div class="result" id="resultContainer">
+                <div class="result-title">Your clip is ready!</div>
+                <p style="color:var(--text-secondary);margin-bottom:8px;" id="resultDetails"></p>
+                <a href="#" class="download-link" id="downloadLink" download>Download MP4</a>
+            </div>
+        </div>
+
+        <div class="api-status">
+            <div class="api-dot" id="apiDot"></div>
+            <span id="apiStatus">Checking API...</span>
+        </div>
+
+        <div class="footer">
+            <p>ytclip is <a href="https://github.com/rahulrajarapu158-arch/ytclip" target="_blank">open source</a> · Powered by Cloudflare R2</p>
+        </div>
+    </div>
+
+<script>
+const API = 'https://ytclip-api.johnny9615.repl.co';
+
+let state = {
+    url: '',
+    start: 0,
+    end: 0,
+    duration: 0,
+    quality: '480',
+    dragging: null
+};
+
+// ── Slider logic ────────────────────────────────────────────────────
+const slider = document.getElementById('rangeSlider');
+const thumbStart = document.getElementById('thumbStart');
+const thumbEnd = document.getElementById('thumbEnd');
+const rangeFill = document.getElementById('rangeFill');
+
+function getSliderPos(e) {
+    const rect = slider.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    return Math.max(0, Math.min(1, x / rect.width));
+}
+
+function setSlider(startPct, endPct) {
+    thumbStart.style.left = (startPct * 100) + '%';
+    thumbEnd.style.left = (endPct * 100) + '%';
+    rangeFill.style.left = (startPct * 100) + '%';
+    rangeFill.style.width = ((endPct - startPct) * 100) + '%';
+}
+
+thumbStart.addEventListener('mousedown', (e) => { state.dragging = 'start'; e.preventDefault(); });
+thumbEnd.addEventListener('mousedown', (e) => { state.dragging = 'end'; e.preventDefault(); });
+thumbStart.addEventListener('touchstart', (e) => { state.dragging = 'start'; e.preventDefault(); });
+thumbEnd.addEventListener('touchstart', (e) => { state.dragging = 'end'; e.preventDefault(); });
+
+window.addEventListener('mousemove', (e) => {
+    if (!state.dragging || !state.duration) return;
+    const pct = getSliderPos(e);
+    const secs = pct * state.duration;
+    if (state.dragging === 'start') {
+        state.start = Math.min(secs, state.end - 1);
+        document.getElementById('startInput').value = fmtTime(state.start);
+    } else {
+        state.end = Math.max(secs, state.start + 1);
+        document.getElementById('endInput').value = fmtTime(state.end);
+    }
+    updateSliderUI();
+});
+
+window.addEventListener('mouseup', () => state.dragging = null);
+window.addEventListener('touchend', () => state.dragging = null);
+
+function updateSliderUI() {
+    if (!state.duration) return;
+    setSlider(state.start / state.duration, state.end / state.duration);
+    document.getElementById('labelStart').textContent = fmtTime(state.start);
+    document.getElementById('labelEnd').textContent = fmtTime(state.end);
+}
+
+function fmtTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return m + ':' + sec.toString().padStart(2, '0');
+}
+
+// ── Input sync ───────────────────────────────────────────────────────
+document.getElementById('startInput').addEventListener('change', function() {
+    state.start = parseTime(this.value) || 0;
+    updateSliderUI();
+});
+document.getElementById('endInput').addEventListener('change', function() {
+    state.end = parseTime(this.value) || state.duration;
+    updateSliderUI();
+});
+
+function parseTime(t) {
+    const parts = t.split(':');
+    if (parts.length === 2) return parseInt(parts[0]) * 60 + parseFloat(parts[1]);
+    if (parts.length === 3) return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
+    return 0;
+}
+
+// ── Quality selection ────────────────────────────────────────────────
+function selectQuality(el) {
+    document.querySelectorAll('.option-card').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    state.quality = el.dataset.quality;
+}
+
+// ── URL change → fetch video info ───────────────────────────────────
+document.getElementById('urlInput').addEventListener('change', async function() {
+    state.url = this.value;
+    if (!state.url.includes('youtube.com') && !state.url.includes('youtu.be')) return;
+    
+    showStatus('info', 'Fetching video info...');
+    try {
+        const res = await fetch(`${API}/api/info`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: state.url })
+        });
+        const data = await res.json();
+        if (data.duration) {
+            state.duration = data.duration;
+            state.end = data.duration;
+            document.getElementById('endInput').value = fmtTime(data.duration);
+            document.getElementById('labelEnd').textContent = fmtTime(data.duration);
+            document.getElementById('labelDuration').textContent = `Duration: ${fmtTime(data.duration)}`;
+            updateSliderUI();
+            hideStatus();
+        }
+    } catch(e) {
+        console.log('Info fetch failed (expected until API is live)');
+        hideStatus();
+    }
+});
+
+// ── Process video ────────────────────────────────────────────────────
+async function processVideo() {
+    if (!state.url) { showStatus('error', 'Please paste a YouTube URL first'); return; }
+    if (!state.duration) { showStatus('error', 'Please wait for video to load'); return; }
+    
+    const btn = document.getElementById('processBtn');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+    hideStatus();
+    hideResult();
+    
+    const progress = document.getElementById('progressContainer');
+    const fill = document.getElementById('progressFill');
+    const text = document.getElementById('progressText');
+    progress.classList.add('active');
+    
+    // Simulate progress
+    let pct = 0;
+    const progressInterval = setInterval(() => {
+        pct += Math.random() * 15;
+        if (pct > 90) pct = 90;
+        fill.style.width = pct + '%';
+        if (pct < 30) text.textContent = 'Downloading video section...';
+        else if (pct < 60) text.textContent = 'Trimming with ffmpeg...';
+        else text.textContent = 'Uploading to R2...';
+    }, 500);
+    
+    try {
+        const res = await fetch(`${API}/api/process`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: state.url,
+                start: fmtTime(state.start),
+                end: fmtTime(state.end),
+                quality: state.quality
+            })
+        });
+        
+        clearInterval(progressInterval);
+        const data = await res.json();
+        
+        if (data.download_url) {
+            fill.style.width = '100%';
+            document.getElementById('progressText').textContent = 'Done!';
+            setTimeout(() => {
+                progress.classList.remove('active');
+                showResult(data);
+            }, 500);
+        } else if (data.error) {
+            progress.classList.remove('active');
+            showStatus('error', data.error);
+        }
+    } catch(e) {
+        clearInterval(progressInterval);
+        progress.classList.remove('active');
+        showStatus('error', 'API is offline. Please try again later.');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = 'Download Clip';
+}
+
+// ── Status / Result helpers ───────────────────────────────────────────
+function showStatus(type, msg) {
+    hideStatus();
+    const el = document.getElementById(type === 'info' ? 'statusInfo' : type === 'success' ? 'statusSuccess' : 'statusError');
+    const txt = type === 'info' ? 'statusText' : type === 'success' ? 'successText' : 'errorText';
+    document.getElementById(txt).textContent = msg;
+    el.classList.add('active');
+}
+
+function hideStatus() {
+    ['statusInfo', 'statusSuccess', 'statusError'].forEach(id => document.getElementById(id).classList.remove('active'));
+}
+
+function showResult(data) {
+    const el = document.getElementById('resultContainer');
+    document.getElementById('resultDetails').textContent = `${data.quality} · ${data.duration}`;
+    document.getElementById('downloadLink').href = data.download_url;
+    el.classList.add('active');
+}
+
+function hideResult() {
+    document.getElementById('resultContainer').classList.remove('active');
+}
+
+// ── API status check ─────────────────────────────────────────────────
+async function checkApi() {
+    const dot = document.getElementById('apiDot');
+    const status = document.getElementById('apiStatus');
+    try {
+        const res = await fetch(`${API}/api/health`);
+        if (res.ok) {
+            dot.style.background = 'var(--success)';
+            status.textContent = 'API online';
+        } else {
+            dot.style.background = 'var(--warning)';
+            status.textContent = 'API starting up...';
+        }
+    } catch(e) {
+        dot.style.background = 'var(--text-muted)';
+        status.textContent = 'API offline (deploy Replit first)';
+    }
+}
+checkApi();
+</script>
+</body>
+</html>
