@@ -573,10 +573,15 @@
                 <span style="font-size:14px;color:var(--text-secondary);">Include transcript</span>
             </label>
 
-            <button class="process-btn" onclick="process()">Process Video</button>
+            <button class="process-btn" id="processBtn" onclick="process()">Process Video</button>
 
             <div class="status" id="status"></div>
             <div class="results" id="results"></div>
+            
+            <div class="recent-section" id="recentSection" style="display:none;margin-top:32px;">
+                <div class="section-title">Recent Clips</div>
+                <div id="recentList"></div>
+            </div>
         </main>
 
         <footer class="footer">
@@ -594,6 +599,13 @@
         let videoId = null;
         let currentQuality = '480';
         let currentFormat = 'text';
+        let recentClips = [];
+        
+        // Load recent clips from localStorage
+        try {
+            recentClips = JSON.parse(localStorage.getItem('ytclip_recent') || '[]');
+            renderRecentClips();
+        } catch(e) { recentClips = []; }
 
         async function loadVideoInfo() {
             const url = document.getElementById('url').value.trim();
@@ -611,10 +623,19 @@
                 if (res.error) { showStatus(res.error, 'error'); return; }
 
                 videoId = res.video_id;
+                videoDuration = res.duration || 0;
                 document.getElementById('videoPreview').classList.add('active');
                 document.getElementById('timestampSection').classList.add('active');
                 document.getElementById('videoThumbnail').src = res.thumbnail;
                 document.getElementById('videoEmbed').innerHTML = '';
+                
+                // Reset slider
+                startPercent = 0;
+                endPercent = 100;
+                updateSlider();
+                document.getElementById('labelEnd').textContent = formatTime(videoDuration);
+                document.getElementById('endTime').value = formatTime(videoDuration);
+                
                 hideStatus();
             } catch (e) {
                 showStatus('Error: ' + e.message, 'error');
@@ -711,6 +732,37 @@
             s.className = 'status active ' + type;
         }
         function hideStatus() { document.getElementById('status').className = 'status'; }
+        
+        function saveRecentClip(file, videoId, fileSize) {
+            const clip = {
+                file: file,
+                videoId: videoId,
+                size: fileSize || '',
+                date: new Date().toLocaleString()
+            };
+            recentClips.unshift(clip);
+            recentClips = recentClips.slice(0, 5); // Keep last 5
+            localStorage.setItem('ytclip_recent', JSON.stringify(recentClips));
+            renderRecentClips();
+        }
+        
+        function renderRecentClips() {
+            const section = document.getElementById('recentSection');
+            const list = document.getElementById('recentList');
+            if (recentClips.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+            let html = '';
+            recentClips.forEach(clip => {
+                html += `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;">`;
+                html += `<span style="flex:1;font-size:13px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${clip.videoId} <span style="color:var(--text-muted);">(${clip.size})</span></span>`;
+                html += `<a href="/api/file/${encodeURIComponent(clip.file)}" download style="font-size:12px;color:var(--accent-primary);text-decoration:none;">⬇ Download</a>`;
+                html += `</div>`;
+            });
+            list.innerHTML = html;
+        }
 
         async function process() {
             const url = document.getElementById('url').value.trim();
@@ -720,8 +772,10 @@
 
             if (!url) return showStatus('Please enter a URL', 'error');
 
-            document.querySelector('.process-btn').disabled = true;
-            showStatus('Processing...', 'info');
+            const btn = document.getElementById('processBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+            showStatus('Downloading video...', 'info');
 
             try {
                 const res = await fetch('/api/process', {
@@ -743,6 +797,9 @@
                         html += '<div class="result-title">Your Clip</div>';
                         html += `<video class="result-video" controls autoplay src="/api/file/${encodeURIComponent(res.file)}"></video>`;
                         html += `<a class="download-btn" href="/api/file/${encodeURIComponent(res.file)}" download>⬇ Download MP4</a>`;
+                        if (res.file_size) {
+                            html += `<span style="margin-left:12px;font-size:13px;color:var(--text-muted);">${res.file_size}</span>`;
+                        }
                     }
                     if (res.transcript) {
                         html += '</div><div class="result-card">';
@@ -752,11 +809,17 @@
                     html += '</div>';
                     document.getElementById('results').innerHTML = html;
                     document.getElementById('results').classList.add('active');
+                    
+                    // Save to recent clips
+                    if (res.file) {
+                        saveRecentClip(res.file, res.video_id, res.file_size);
+                    }
                 }
             } catch (e) {
                 showStatus('Error: ' + e.message, 'error');
             }
-            document.querySelector('.process-btn').disabled = false;
+            btn.disabled = false;
+            btn.textContent = 'Process Video';
         }
     </script>
 </body>

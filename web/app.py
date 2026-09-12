@@ -12,6 +12,18 @@ OUTPUT_DIR = os.path.join(tempfile.gettempdir(), 'ytclip_web')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
+def get_video_duration(url):
+    """Get video duration in seconds using yt-dlp"""
+    try:
+        import yt_dlp
+        ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return info.get('duration', 0)
+    except Exception:
+        return 0
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -29,11 +41,15 @@ def api_info():
     if not video_id:
         return jsonify({'error': 'Invalid YouTube URL'}), 400
     
+    # Fetch duration using yt-dlp
+    duration = get_video_duration(url)
+    
     return jsonify({
         'video_id': video_id,
         'embed_url': f'https://www.youtube.com/embed/{video_id}',
         'watch_url': f'https://www.youtube.com/watch?v={video_id}',
-        'thumbnail': f'https://img.youtube.com/vi/{video_id}/maxresdefault.jpg'
+        'thumbnail': f'https://img.youtube.com/vi/{video_id}/maxresdefault.jpg',
+        'duration': duration
     })
 
 
@@ -161,12 +177,17 @@ def api_process():
         with open(transcript_file, 'w') as f:
             f.write(transcript)
     
+    # Get file size
+    file_size_bytes = os.path.getsize(output)
+    file_size = f"{file_size_bytes / 1024 / 1024:.1f} MB" if file_size_bytes > 1024*1024 else f"{file_size_bytes / 1024:.0f} KB"
+
     return jsonify({
         'status': 'done',
         'file': os.path.basename(output),
         'transcript_file': os.path.basename(transcript_file) if transcript_file else None,
         'video_id': video_id,
-        'transcript': transcript
+        'transcript': transcript,
+        'file_size': file_size
     })
 
 
