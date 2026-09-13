@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ytclip — YouTube Clip Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --surface: rgba(255, 255, 255, 0.03);
+            --surface-hover: rgba(255, 255, 255, 0.06);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-focus: rgba(139, 92, 246, 0.5);
+            --text-primary: #f0f0f5;
+            --text-secondary: #8888a0;
+            --text-muted: #55556a;
+            --accent-primary: #8b5cf6;
+            --accent-secondary: #06b6d4;
+            --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --glow-purple: rgba(139, 92, 246, 0.15);
+            --glow-cyan: rgba(6, 182, 212, 0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 700px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px var(--glow-purple);
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.9rem 1.5rem;
+            background: var(--accent-gradient);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .status {
+            display: none;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .status.pending { display: block; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); color: var(--warning); }
+        .status.processing { display: block; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); color: var(--accent-primary); }
+        .status.done { display: block; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--success); }
+        .status.error { display: block; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--error); }
+
+        .video-preview {
+            display: none;
+            margin-top: 1rem;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .video-preview iframe {
+            width: 100%;
+            height: 200px;
+            border: none;
+        }
+
+        .download-link {
+            display: inline-block;
+            margin-top: 0.5rem;
+            color: var(--accent-secondary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .download-link:hover { text-decoration: underline; }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+            margin-right: 0.5rem;
+            vertical-align: middle;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        footer {
+            margin-top: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        footer a { color: var(--accent-secondary); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ytclip</h1>
+            <p class="subtitle">Clip any YouTube video. Free, no signup.</p>
+        </header>
+
+        <div class="card">
+            <div class="input-group">
+                <label for="url">YouTube URL</label>
+                <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+            </div>
+
+            <div class="video-preview" id="videoPreview">
+                <iframe id="embedFrame" src="" allowfullscreen></iframe>
+            </div>
+
+            <div class="row">
+                <div class="input-group">
+                    <label for="startTime">Start Time</label>
+                    <input type="text" id="startTime" placeholder="0:00" value="0:00">
+                </div>
+                <div class="input-group">
+                    <label for="endTime">End Time</label>
+                    <input type="text" id="endTime" placeholder="0:30">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="input-group">
+                    <label for="quality">Quality</label>
+                    <select id="quality">
+                        <option value="360">360p</option>
+                        <option value="480" selected>480p</option>
+                        <option value="720">720p</option>
+                        <option value="1080">1080p</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="format">Format</label>
+                    <select id="format">
+                        <option value="mp4" selected>MP4</option>
+                        <option value="webm">WebM</option>
+                        <option value="mkv">MKV</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn" id="submitBtn" onclick="submitJob()">Process Clip</button>
+
+            <div class="status" id="statusBox"></div>
+        </div>
+
+        <footer>
+            <p>Powered by <a href="https://github.com/rahulrajarapu158-arch/ytclip">ytclip</a> — Cloudflare + GitHub Actions</p>
+        </footer>
+    </div>
+
+    <script>
+        // ── Configuration ────────────────────────────────────────────────
+        const WORKER_URL = 'https://ytclip-worker.YOUR_SUBDOMAIN.workers.dev';
+        // Change this to your actual Worker URL after deployment
+
+        // ── DOM Elements ──────────────────────────────────────────────────
+        const urlInput = document.getElementById('url');
+        const startInput = document.getElementById('startTime');
+        const endInput = document.getElementById('endTime');
+        const qualitySelect = document.getElementById('quality');
+        const formatSelect = document.getElementById('format');
+        const submitBtn = document.getElementById('submitBtn');
+        const statusBox = document.getElementById('statusBox');
+        const videoPreview = document.getElementById('videoPreview');
+        const embedFrame = document.getElementById('embedFrame');
+
+        // ── Video preview on URL paste ────────────────────────────────────
+        urlInput.addEventListener('input', () => {
+            const url = urlInput.value;
+            const videoId = extractVideoId(url);
+            if (videoId) {
+                embedFrame.src = `https://www.youtube.com/embed/${videoId}`;
+                videoPreview.style.display = 'block';
+            } else {
+                videoPreview.style.display = 'none';
+            }
+        });
+
+        function extractVideoId(url) {
+            const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+            return match ? match[1] : null;
+        }
+
+        // ── Submit job ────────────────────────────────────────────────────
+        async function submitJob() {
+            const url = urlInput.value.trim();
+            const start = startInput.value.trim();
+            const end = endInput.value.trim();
+            const quality = qualitySelect.value;
+            const format = formatSelect.value;
+
+            if (!url) {
+                showStatus('error', 'Please enter a YouTube URL');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            showStatus('pending', '<span class="spinner"></span> Submitting job...');
+
+            try {
+                const resp = await fetch(`${WORKER_URL}/api/job`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, start, end, quality, format })
+                });
+
+                const data = await resp.json();
+
+                if (data.error) {
+                    showStatus('error', data.error);
+                    submitBtn.disabled = false;
+                    return;
+                }
+
+                showStatus('processing', `<span class="spinner"></span> Job ${data.job_id.slice(0, 8)}... Processing on GitHub Actions. This takes 2-5 minutes.`);
+                pollJobStatus(data.job_id);
+
+            } catch (err) {
+                showStatus('error', `Failed to submit: ${err.message}`);
+                submitBtn.disabled = false;
+            }
+        }
+
+        // ── Poll job status ───────────────────────────────────────────────
+        async function pollJobStatus(jobId) {
+            const interval = setInterval(async () => {
+                try {
+                    const resp = await fetch(`${WORKER_URL}/api/job/${jobId}`);
+                    const data = await resp.json();
+
+                    if (data.status === 'done') {
+                        clearInterval(interval);
+                        showStatus('done', `Done! <a class="download-link" href="${data.clip_url}" download>Download clip</a>`);
+                        submitBtn.disabled = false;
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        showStatus('error', data.error || 'Processing failed');
+                        submitBtn.disabled = false;
+                    }
+                    // else still pending/processing — keep polling
+                } catch (err) {
+                    // Network error, retry
+                    console.error('Poll error:', err);
+                }
+            }, 10000); // Poll every 10 seconds
+        }
+
+        // ── Show status ───────────────────────────────────────────────────
+        function showStatus(type, message) {
+            statusBox.className = `status ${type}`;
+            statusBox.innerHTML = message;
+        }
+    </script>
+</body>
+</html>

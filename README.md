@@ -1,64 +1,113 @@
-# ytclip
+# ytclip — Cloudflare + GitHub Actions Hybrid
 
-**ytclip** is a free and open-source CLI tool for downloading, trimming, and extracting transcripts from YouTube videos.
+**Free YouTube clipper.** No server to manage. No bills.
 
-## Features
+## Architecture
 
-- Download any YouTube video at configurable quality (480p default, up to 4K)
-- Trim videos by timestamps (`--start 1:30 --end 4:20`)
-- Extract auto-generated or manual transcripts (SRT/VTT/text)
-- Batch processing from a list of URLs
-- Clean, colorful CLI output
-
-## Install
-
-```bash
-pip install ytclip
+```
+Browser → Cloudflare Pages (static UI)
+              ↓
+         Cloudflare Worker (API + KV job queue)
+              ↓
+         GitHub Actions (yt-dlp + ffmpeg + R2 upload)
+              ↓
+         Cloudflare R2 (clip storage)
+              ↓
+         User downloads from R2
 ```
 
-Or from source:
+## What's free
+
+| Service | Free tier |
+|---------|-----------|
+| Cloudflare Pages | Unlimited bandwidth, 500 builds/mo |
+| Cloudflare Worker | 100K requests/day |
+| Cloudflare KV | 100K reads/day, 1K writes/day |
+| Cloudflare R2 | 10GB storage, zero egress |
+| GitHub Actions | 2000 min/month |
+
+## Setup
+
+### 1. Cloudflare
+
+1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com)
+2. Create a KV namespace:
+   ```bash
+   wrangler kv:namespace create YTCLIP_KV
+   wrangler kv:namespace create YTCLIP_KV --preview
+   ```
+3. Create an R2 bucket:
+   ```bash
+   wrangler r2 bucket create ytclip-clips
+   wrangler r2 bucket create ytclip-clips-preview
+   ```
+4. Get R2 credentials (Access Key + Secret Key) from R2 dashboard
+5. Enable public access on the bucket (for clip downloads)
+
+### 2. GitHub
+
+1. Fork this repo: `rahulrajarapu158-arch/ytclip`
+2. Add these **Repository Secrets** (Settings → Secrets → Actions):
+   - `R2_BUCKET` — bucket name (e.g., `ytclip-clips`)
+   - `R2_ACCESS_KEY` — from R2 dashboard
+   - `R2_SECRET_KEY` — from R2 dashboard
+   - `R2_ENDPOINT` — `https://<account_id>.r2.cloudflarestorage.com`
+   - `R2_PUBLIC_URL` — `https://pub-<bucket_id>.r2.dev`
+   - `WORKER_URL` — `https://ytclip-worker.<subdomain>.workers.dev`
+   - `WEBHOOK_SECRET` — any random string
+
+### 3. Deploy Worker
 
 ```bash
-git clone https://github.com/rahulrajarapu158-arch/ytclip.git
-cd ytclip
-pip install -e .
+cd cf-worker
+wrangler deploy
 ```
 
-## Quick Start
+### 4. Deploy Frontend
 
 ```bash
-# Download a video (480p by default)
-ytclip download "https://youtube.com/watch?v=..."
-
-# Download and trim
-ytclip cut "https://youtube.com/watch?v=..." --start 1:30 --end 4:20
-
-# Get transcript
-ytclip transcript "https://youtube.com/watch?v=..."
-
-# All in one
-ytclip process "https://youtube.com/watch?v=..." --start 0:10 --end 2:30 --transmit
+cd cf-frontend
+wrangler pages deploy .
+# Or connect to GitHub for auto-deploy on push
 ```
 
-## Pricing
+### 5. Test
 
-| Tier | Quality | Transcript | Cost |
-|------|---------|------------|------|
-| Free | 480p | Yes | Free |
-| Pro | 1080p, 4K | Yes + translation | API key required |
+1. Open your Pages URL
+2. Paste a YouTube URL
+3. Set timestamps
+4. Click "Process Clip"
+5. Wait 2-5 minutes
+6. Download the clip
 
-The CLI tool is free and open source forever. High-resolution downloads require a paid API key to cover bandwidth costs.
+## How it works
 
-## API Keys
+1. **User submits** → Worker creates job in KV, returns `job_id`
+2. **Worker triggers** GitHub Actions via `workflow_dispatch` API
+3. **GitHub Actions** runs yt-dlp + ffmpeg on a real runner
+4. **Finished clip** uploaded to R2
+5. **Webhook** sent back to Worker with clip URL
+6. **User polls** Worker for status, gets download URL
 
-For Pro tier:
+## Limitations
+
+- **2-5 min delay** per clip (GitHub Actions cold start + processing)
+- **~660 clips/month** max (GitHub Actions free tier)
+- **10GB storage** on R2 free tier (~200 clips at 50MB each)
+- **Queue limit** — 1 job per workflow_dispatch trigger
+
+## Local daemon (optional)
+
+For instant processing, run the local daemon:
 
 ```bash
-ytclip config --api-key YOUR_KEY
+cd yt-clipper
+python3 -m web.app
+# → http://localhost:5000
 ```
 
-Get your key at https://ytclip.dev/pricing
+The local daemon uses your own hardware — no queue, no delay.
 
 ## License
 
-AGPL-3.0 — free for personal and non-commercial use. Commercial use requires a license.
+MIT

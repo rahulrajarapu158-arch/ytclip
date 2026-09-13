@@ -1,0 +1,28 @@
+name = "ytclip-worker"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# KV Namespace for job queue
+[[kv_namespaces]]
+binding = "YTCLIP_KV"
+id = "REPLACE_WITH_KV_ID"
+preview_id = "REPLACE_WITH_PREVIEW_KV_ID"
+
+# R2 Bucket for clip storage
+[[r2_buckets]]
+binding = "YTCLIP_R2"
+bucket_name = "ytclip-clips"
+preview_bucket_name = "ytclip-clips-preview"
+
+# Environment variables (use `wrangler secret put` for secrets)
+[vars]
+GITHUB_REPO = "rahulrajarapu158-arch/ytclip"
+
+# Secrets to set via `wrangler secret put`:
+# - GITHUB_TOKEN (GitHub Personal Access Token with `repo` scope)
+# - WEBHOOK_SECRET (random string for webhook verification)
+
+# Routes (optional — for custom domain)
+# routes = [
+#   { pattern = "ytclip.dev/api/*", custom_domain = true }
+# ]
