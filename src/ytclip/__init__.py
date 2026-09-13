@@ -109,6 +109,8 @@ def download_video(url, output_path, quality="480", api_key=None, fmt="mp4", sta
             'merge_output_format': fmt,
             'quiet': True,
             'no_warnings': True,
+            'extractor_args': {'youtube': {'player_client': ['web', 'ios', 'android']}},
+            'remote_components': {'ejs': 'github'},
         }
     
     # Pro tier check for high quality
@@ -301,6 +303,8 @@ def get_transcript(url, output_format="text", lang="en"):
         'subtitleslangs': [lang],
         'subtitlesformat': 'srt/vtt/best',
         'quiet': True,
+        'extractor_args': {'youtube': {'player_client': ['web', 'ios', 'android']}},
+        'remote_components': {'ejs': 'github'},
     }
     
     try:
