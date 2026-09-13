@@ -1,99 +1,122 @@
-# ytclip — Free YouTube Clipper
+# ytclip — YouTube Clipper
 
-**Clip any YouTube video for free.** No signup, no server, no bills.
+**Free YouTube clipper.** This is open source code — not a hosted service.
 
-## How it works
+Fork it, run it locally, modify it, deploy it yourself. No uptime guarantees.
 
-```
-You paste URL → Cloudflare Worker creates job → GitHub Actions processes clip → Download
-```
-
-| Layer | Service | Cost |
-|-------|---------|------|
-| Frontend | Cloudflare Pages | Free |
-| API + Job Queue | Cloudflare Worker + KV | Free |
-| Processing | GitHub Actions | Free (2000 min/mo) |
-| Storage | Catbox.moe | Free (200MB/file) |
+---
 
 ## Quick Start (Local)
 
 ```bash
-# Clone
 git clone https://github.com/rahulrajarapu158-arch/ytclip.git
 cd ytclip
+bash setup.sh
+# → http://localhost:5000
+```
 
-# Install dependencies
+Or manually:
+
+```bash
 pip install flask yt-dlp
-
-# Run
 python3 -m web.app
 # → http://localhost:5000
 ```
 
-## Quick Start (Cloudflare + GitHub Actions)
+---
 
-### 1. Cloudflare Setup
+## How it works
 
-```bash
-# Install wrangler
-npm install -g wrangler
-
-# Login
-wrangler login
-
-# Create KV namespace
-wrangler kv:namespace create YTCLIP_KV
+```
+Paste URL → Set timestamps → Download clip
 ```
 
-### 2. GitHub Setup
+The Flask app uses yt-dlp + ffmpeg to download and trim YouTube videos.
 
-1. Fork this repo
-2. Go to **Settings → Secrets → Actions**
-3. Add:
-   - `WORKER_URL` — your Worker URL
-   - `WEBHOOK_SECRET` — any random string
-   - `GITHUB_TOKEN` — your PAT (auto-added if enabled)
+---
 
-### 3. Deploy Worker
+## Project Structure
 
-```bash
-cd cf-worker
-wrangler deploy
+```
+ytclip/
+├── web/app.py              # Flask backend
+├── cf-worker/worker.js     # Cloudflare Worker (optional)
+├── cf-frontend/index.html  # Static UI (optional)
+├── .github/workflows/      # GitHub Actions (optional)
+├── setup.sh                # One-command local setup
+├── README.md
+├── LICENSE
+└── pyproject.toml
 ```
 
-### 4. Deploy Frontend
-
-```bash
-cd cf-frontend
-wrangler pages deploy .
-```
+---
 
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/job` | Create clip job |
-| GET | `/api/job/:id` | Check status |
-| GET | `/api/jobs` | List all jobs |
-| POST | `/api/webhook` | GH Actions callback |
+| GET | `/` | Frontend |
+| POST | `/api/info` | Get video metadata |
+| POST | `/api/process` | Download + trim + transcript |
+| POST | `/api/multi-process` | Multiple clips at once |
+| GET | `/api/file/:filename` | Download a file |
 
-## Job Lifecycle
+---
 
+## Requirements
+
+- Python 3.9+
+- ffmpeg
+- yt-dlp
+- Flask
+
+---
+
+## Deploy Your Own
+
+### Cloudflare + GitHub Actions (free tier)
+
+1. Fork this repo
+2. Create Cloudflare KV namespace: `wrangler kv:namespace create YTCLIP_KV`
+3. Add GitHub Actions secrets (see `cf-worker/wrangler.toml`)
+4. Deploy Worker: `cd cf-worker && wrangler deploy`
+5. Deploy frontend: `cd cf-frontend && wrangler pages deploy .`
+
+### VPS
+
+```bash
+# On any VPS with Python + ffmpeg
+pip install -r requirements.txt
+python3 -m web.app
+# Bind to 0.0.0.0 for public access
 ```
-pending → processing → done
-                    → error
-```
+
+### Hugging Face Spaces
+
+Create a Docker Space with the Flask app. Add yt-dlp + ffmpeg to the Dockerfile.
+
+---
 
 ## Limitations
 
-- **2-5 min delay** per clip (GitHub Actions cold start)
-- **~660 clips/month** (GitHub Actions free tier)
-- **200MB max** per clip (Catbox.moe limit)
+- YouTube may rate-limit or block requests
+- Processing time depends on video length and quality
+- No background job queue in local mode (request stays open during processing)
 
-## Author
+---
 
-**Rahul Rajarapu** — [rahulrajarapu158-arch](https://github.com/rahulrajarapu158-arch)
+## Contributing
+
+Issues and PRs welcome. This is a code dump — not a maintained project — but fixes and improvements are fine.
+
+---
 
 ## License
 
-MIT
+MIT — do whatever you want.
+
+---
+
+## Author
+
+Rahul Rajarapu — [rahulrajarapu158-arch](https://github.com/rahulrajarapu158-arch)
