@@ -1,60 +1,58 @@
-# ytclip — Cloudflare + GitHub Actions Hybrid
+# ytclip — Free YouTube Clipper
 
-**Free YouTube clipper.** No server to manage. No bills.
+**Clip any YouTube video for free.** No signup, no server, no bills.
 
-## Architecture
+## How it works
 
 ```
-Browser → Cloudflare Pages (static UI)
-              ↓
-         Cloudflare Worker (API + KV job queue)
-              ↓
-         GitHub Actions (yt-dlp + ffmpeg + R2 upload)
-              ↓
-         Cloudflare R2 (clip storage)
-              ↓
-         User downloads from R2
+You paste URL → Cloudflare Worker creates job → GitHub Actions processes clip → Download
 ```
 
-## What's free
+| Layer | Service | Cost |
+|-------|---------|------|
+| Frontend | Cloudflare Pages | Free |
+| API + Job Queue | Cloudflare Worker + KV | Free |
+| Processing | GitHub Actions | Free (2000 min/mo) |
+| Storage | Catbox.moe | Free (200MB/file) |
 
-| Service | Free tier |
-|---------|-----------|
-| Cloudflare Pages | Unlimited bandwidth, 500 builds/mo |
-| Cloudflare Worker | 100K requests/day |
-| Cloudflare KV | 100K reads/day, 1K writes/day |
-| Cloudflare R2 | 10GB storage, zero egress |
-| GitHub Actions | 2000 min/month |
+## Quick Start (Local)
 
-## Setup
+```bash
+# Clone
+git clone https://github.com/rahulrajarapu158-arch/ytclip.git
+cd ytclip
 
-### 1. Cloudflare
+# Install dependencies
+pip install flask yt-dlp
 
-1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com)
-2. Create a KV namespace:
-   ```bash
-   wrangler kv:namespace create YTCLIP_KV
-   wrangler kv:namespace create YTCLIP_KV --preview
-   ```
-3. Create an R2 bucket:
-   ```bash
-   wrangler r2 bucket create ytclip-clips
-   wrangler r2 bucket create ytclip-clips-preview
-   ```
-4. Get R2 credentials (Access Key + Secret Key) from R2 dashboard
-5. Enable public access on the bucket (for clip downloads)
+# Run
+python3 -m web.app
+# → http://localhost:5000
+```
 
-### 2. GitHub
+## Quick Start (Cloudflare + GitHub Actions)
 
-1. Fork this repo: `rahulrajarapu158-arch/ytclip`
-2. Add these **Repository Secrets** (Settings → Secrets → Actions):
-   - `R2_BUCKET` — bucket name (e.g., `ytclip-clips`)
-   - `R2_ACCESS_KEY` — from R2 dashboard
-   - `R2_SECRET_KEY` — from R2 dashboard
-   - `R2_ENDPOINT` — `https://<account_id>.r2.cloudflarestorage.com`
-   - `R2_PUBLIC_URL` — `https://pub-<bucket_id>.r2.dev`
-   - `WORKER_URL` — `https://ytclip-worker.<subdomain>.workers.dev`
+### 1. Cloudflare Setup
+
+```bash
+# Install wrangler
+npm install -g wrangler
+
+# Login
+wrangler login
+
+# Create KV namespace
+wrangler kv:namespace create YTCLIP_KV
+```
+
+### 2. GitHub Setup
+
+1. Fork this repo
+2. Go to **Settings → Secrets → Actions**
+3. Add:
+   - `WORKER_URL` — your Worker URL
    - `WEBHOOK_SECRET` — any random string
+   - `GITHUB_TOKEN` — your PAT (auto-added if enabled)
 
 ### 3. Deploy Worker
 
@@ -68,45 +66,33 @@ wrangler deploy
 ```bash
 cd cf-frontend
 wrangler pages deploy .
-# Or connect to GitHub for auto-deploy on push
 ```
 
-### 5. Test
+## API Endpoints
 
-1. Open your Pages URL
-2. Paste a YouTube URL
-3. Set timestamps
-4. Click "Process Clip"
-5. Wait 2-5 minutes
-6. Download the clip
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/job` | Create clip job |
+| GET | `/api/job/:id` | Check status |
+| GET | `/api/jobs` | List all jobs |
+| POST | `/api/webhook` | GH Actions callback |
 
-## How it works
+## Job Lifecycle
 
-1. **User submits** → Worker creates job in KV, returns `job_id`
-2. **Worker triggers** GitHub Actions via `workflow_dispatch` API
-3. **GitHub Actions** runs yt-dlp + ffmpeg on a real runner
-4. **Finished clip** uploaded to R2
-5. **Webhook** sent back to Worker with clip URL
-6. **User polls** Worker for status, gets download URL
+```
+pending → processing → done
+                    → error
+```
 
 ## Limitations
 
-- **2-5 min delay** per clip (GitHub Actions cold start + processing)
-- **~660 clips/month** max (GitHub Actions free tier)
-- **10GB storage** on R2 free tier (~200 clips at 50MB each)
-- **Queue limit** — 1 job per workflow_dispatch trigger
+- **2-5 min delay** per clip (GitHub Actions cold start)
+- **~660 clips/month** (GitHub Actions free tier)
+- **200MB max** per clip (Catbox.moe limit)
 
-## Local daemon (optional)
+## Author
 
-For instant processing, run the local daemon:
-
-```bash
-cd yt-clipper
-python3 -m web.app
-# → http://localhost:5000
-```
-
-The local daemon uses your own hardware — no queue, no delay.
+**Rahul Rajarapu** — [rahulrajarapu158-arch](https://github.com/rahulrajarapu158-arch)
 
 ## License
 

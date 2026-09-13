@@ -1,44 +1,35 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ytclip"
-version = "0.1.0"
-description = "YouTube video downloader, trimmer, and transcript extractor"
+version = "1.0.0"
+description = "Free YouTube clipper — Cloudflare + GitHub Actions hybrid"
 readme = "README.md"
-license = {text = "AGPL-3.0"}
-requires-python = ">=3.8"
+license = {file = "LICENSE"}
+requires-python = ">=3.9"
 authors = [
     {name = "Rahul Rajarapu", email = "rahulrajarapu158@gmail.com"}
 ]
-keywords = ["youtube", "downloader", "trimmer", "transcript", "cli"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Environment :: Console",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: GNU Affero General Public License v3",
-    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Topic :: Multimedia :: Video",
-    "Topic :: Utilities",
 ]
-
 dependencies = [
-    "yt-dlp>=2025.1.1",
+    "flask>=3.0",
+    "yt-dlp>=2024.1",
 ]
 
-[project.scripts]
-ytclip = "ytclip.cli:main"
+[project.optional-dependencies]
+dev = ["gunicorn>=21.2", "pytest"]
 
 [project.urls]
 Homepage = "https://github.com/rahulrajarapu158-arch/ytclip"
 Repository = "https://github.com/rahulrajarapu158-arch/ytclip"
-Issues = "https://github.com/rahulrajarapu158-arch/ytclip/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-ytclip = ["*.json", "*.txt"]
