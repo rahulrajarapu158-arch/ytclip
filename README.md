@@ -1,12 +1,12 @@
 # ytclip — YouTube Clipper
 
-**Free YouTube clipper.** This is open source code — not a hosted service.
+**Free YouTube clipper.** Open source code — not a hosted service.
 
-Fork it, run it locally, modify it, deploy it yourself. No uptime guarantees.
+Fork it, run it locally, modify it. No accounts, no API keys, no server.
 
 ---
 
-## Quick Start (Local)
+## Quick Start
 
 ```bash
 git clone https://github.com/rahulrajarapu158-arch/ytclip.git
@@ -25,13 +25,12 @@ python3 -m web.app
 
 ---
 
-## How it works
+## Requirements
 
-```
-Paste URL → Set timestamps → Download clip
-```
-
-The Flask app uses yt-dlp + ffmpeg to download and trim YouTube videos.
+- Python 3.9+
+- ffmpeg
+- yt-dlp
+- Flask
 
 ---
 
@@ -40,10 +39,9 @@ The Flask app uses yt-dlp + ffmpeg to download and trim YouTube videos.
 ```
 ytclip/
 ├── web/app.py              # Flask backend
-├── cf-worker/worker.js     # Cloudflare Worker (optional)
-├── cf-frontend/index.html  # Static UI (optional)
-├── .github/workflows/      # GitHub Actions (optional)
-├── setup.sh                # One-command local setup
+├── src/ytclip/             # Core library
+├── setup.sh                # One-command setup
+├── requirements.txt        # Python deps
 ├── README.md
 ├── LICENSE
 └── pyproject.toml
@@ -63,37 +61,13 @@ ytclip/
 
 ---
 
-## Requirements
+## How it works
 
-- Python 3.9+
-- ffmpeg
-- yt-dlp
-- Flask
-
----
-
-## Deploy Your Own
-
-### Cloudflare + GitHub Actions (free tier)
-
-1. Fork this repo
-2. Create Cloudflare KV namespace: `wrangler kv:namespace create YTCLIP_KV`
-3. Add GitHub Actions secrets (see `cf-worker/wrangler.toml`)
-4. Deploy Worker: `cd cf-worker && wrangler deploy`
-5. Deploy frontend: `cd cf-frontend && wrangler pages deploy .`
-
-### VPS
-
-```bash
-# On any VPS with Python + ffmpeg
-pip install -r requirements.txt
-python3 -m web.app
-# Bind to 0.0.0.0 for public access
+```
+Paste URL → Set timestamps → Download clip
 ```
 
-### Hugging Face Spaces
-
-Create a Docker Space with the Flask app. Add yt-dlp + ffmpeg to the Dockerfile.
+yt-dlp downloads the video section. ffmpeg is available if needed for transcoding.
 
 ---
 
@@ -101,7 +75,7 @@ Create a Docker Space with the Flask app. Add yt-dlp + ffmpeg to the Dockerfile.
 
 - YouTube may rate-limit or block requests
 - Processing time depends on video length and quality
-- No background job queue in local mode (request stays open during processing)
+- No background job queue (request stays open during processing)
 
 ---
 
