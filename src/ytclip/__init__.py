@@ -71,7 +71,7 @@ def parse_timestamp(ts):
     else:
         raise ValueError(f"Invalid timestamp format: {ts}")
 
-def download_video(url, output_path, quality="480", api_key=None, fmt="mp4", start=None, end=None):
+def download_video(url, output_path, quality="480", fmt="mp4", start=None, end=None):
     """Download video using yt-dlp, with optional section download via ffmpeg"""
     print(f"{Colors.BLUE}📥 Downloading video...{Colors.END}")
     
@@ -113,12 +113,7 @@ def download_video(url, output_path, quality="480", api_key=None, fmt="mp4", sta
             'remote_components': {'ejs': 'github'},
         }
     
-    # Pro tier check for high quality
-    if quality in ["1080", "2160", "best"] and not api_key:
-        print(f"{Colors.YELLOW}⚠️  {quality}p requires Pro tier API key{Colors.END}")
-        print(f"{Colors.YELLOW}   Get key at: https://ytclip.dev/pricing{Colors.END}")
-        print(f"{Colors.YELLOW}   Falling back to 480p (free tier){Colors.END}")
-        ydl_opts['format'] = quality_map["480"]
+    # No paywall — all quality is free
     
     # YouTube DASH doesn't support --download-sections reliably, so for
     # section downloads we still pull the full stream then extract with ffmpeg.
@@ -367,7 +362,7 @@ def cmd_download(args):
     
     output = args.output or f"%(title)s_%(id)s.%(ext)s"
     
-    download_video(url, output, quality=args.quality, api_key=args.api_key, fmt=args.format, start=getattr(args, 'start', None), end=getattr(args, 'end', None))
+    download_video(url, output, quality=args.quality, fmt=args.format, start=getattr(args, 'start', None), end=getattr(args, 'end', None))
 
 def cmd_cut(args):
     """Handle cut command"""
@@ -381,7 +376,7 @@ def cmd_cut(args):
     with tempfile.TemporaryDirectory() as tmpdir:
         # Download only the section
         temp_video = os.path.join(tmpdir, "video.mp4")
-        if not download_video(url, temp_video, quality=args.quality, api_key=args.api_key, fmt=fmt, start=args.start, end=args.end):
+        if not download_video(url, temp_video, quality=args.quality,  fmt=fmt, start=args.start, end=args.end):
             return
         
         # No trim needed - already downloaded only the section
@@ -421,7 +416,7 @@ def cmd_process(args):
     with tempfile.TemporaryDirectory() as tmpdir:
         # Download only the section (or full video if no timestamps)
         temp_video = os.path.join(tmpdir, "video.mp4")
-        if not download_video(url, temp_video, quality=args.quality, api_key=args.api_key, fmt=fmt, start=args.start, end=args.end):
+        if not download_video(url, temp_video, quality=args.quality,  fmt=fmt, start=args.start, end=args.end):
             return
         
         # No trim needed - download_video already handles sections
